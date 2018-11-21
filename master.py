@@ -20,9 +20,10 @@ context_terms = []
 
 
 # Constants used:
+# TODO: all values are dummy, need to figure out actuals
 key_term_threshold = 2
 context_span = 3
-context_term_val_threshold = 2
+context_term_val_threshold = 1
 
 def get_data(path):
     data = []
@@ -52,6 +53,7 @@ def get_data(path):
 
 def get_context_dict(key_terms, key_term_occurance, train):
     context_dict = {}
+    count = 0
     for index, key in enumerate(key_terms):
         for review_index in key_term_occurance[index]:
             review = train[review_index].split()
@@ -63,15 +65,18 @@ def get_context_dict(key_terms, key_term_occurance, train):
                 for word in subsring:
                     if word in context_dict:
                         context_dict[word] += 1
+                        count += 1
                     else:
                         context_dict[word] = 1
-    return context_dict
+                        count += 1
+    return context_dict, count
 
 
 if __name__ == '__main__':
 
     with Pool(4) as p:
-        [train_positive, train_negative, test_positive, test_negative] = p.map(get_data, [train_pos_path, train_neg_path, test_pos_path, test_neg_path])
+        [train_positive, train_negative, test_positive, test_negative] = \
+            p.map(get_data, [train_pos_path, train_neg_path, test_pos_path, test_neg_path])
 
     print("\n Data extracting and preprocessing done. Processed review count = ", str(4 * len(train_positive)))
     print ("\n Training :")
@@ -105,19 +110,22 @@ if __name__ == '__main__':
     print (str(len(pos_key_terms)), " positive key words extracted.")
 
     print ("\n  Extracting context terms.")
-    context_positive = get_context_dict(pos_key_terms, key_term_occurance_pos, train_positive)
-    context_negative = get_context_dict(pos_key_terms, key_term_occurance_neg, train_negative)
+    # TODO: parallelize this code, can go faster
+    context_positive, context_positive_count = get_context_dict(pos_key_terms, key_term_occurance_pos, train_positive)
+    context_negative, context_negative_count = get_context_dict(pos_key_terms, key_term_occurance_neg, train_negative)
 
     for val in context_positive.keys():
         neg_freq = 0
         if val in context_negative:
             neg_freq = context_negative[val]
-        if (context_positive[val] - neg_freq) > context_term_val_threshold:
+        if ((context_positive[val] / context_positive_count) - (neg_freq / context_negative_count)) >= \
+                context_term_val_threshold: # not just frequency ??
             context_terms.append(val)
 
     print ("Extracted ", str(len(context_terms)), " positive context terms.")
 
     print ("\n Testing :")
+    
     """X_test = vectorizer_pos.transform(test_positive)
     print(X_test.toarray().sum(axis=0))
     """
