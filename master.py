@@ -1,12 +1,13 @@
 import gc
 import glob
 import string
+import statistics as stat
+import numpy as np
+import collections as col
 from multiprocessing import Pool
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import CountVectorizer
-import numpy as np
-import collections as col
 
 train_pos_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/train/pos/"
 train_neg_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/train/neg/"
@@ -18,6 +19,11 @@ key_term_occurance_pos = []
 key_term_occurance_neg = []
 context_terms = []
 
+# training data * feature values
+# feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores  
+pos_feature_vals_train = []
+neg_feature_vals_train = []
+# feature_vals = [[]]
 
 # Constants used:
 # TODO: all values are dummy, need to figure out actuals
@@ -29,7 +35,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 100:
+        if temp == 1000:
             break
         infile = open(files)
 
@@ -114,6 +120,24 @@ def get_context_terms(context_prim, context_sec, context_prim_count, context_sec
             active_prim_keys.add(context_prim[val][0])
     return context_terms, active_prim_keys
 
+
+def get_features_1_to_5(review, keys_set, key_terms):
+    features = [0, 0, 0, 0, 0]
+    data = set(review.split())
+    keys_inter = keys_set.intersection(data)
+    if len(keys_inter) != 0:
+        features[0] = len(keys_inter)
+        key_scores = [key_terms[val] for val in keys_inter]
+        features[1] = max(key_scores)
+        features[2] = min(key_scores)
+        features[3] = float(sum(key_scores) / features[0])
+        if features[0] == 1:
+           features[4] = 0
+        else:    
+           features[4] = stat.stdev(key_scores)
+    
+    return features
+
 if __name__ == '__main__':
 
     p = Pool(4)
@@ -126,7 +150,7 @@ if __name__ == '__main__':
     Y_train = vectorizer_neg.fit_transform(train_negative) # should we fit it with same or different classifier objects ?
     train_pos = X_train.toarray().sum(axis=0)
     train_neg = Y_train.toarray().sum(axis=0)
-    print ("\n  Features extracted.")
+    print ("\n  Extracting Language model.")
     print ("Total positive words = ", train_pos.sum())
     print ("Total negative words = ", train_neg.sum()) # will this be a problem since i train with same classifier
 
@@ -141,10 +165,10 @@ if __name__ == '__main__':
     #print (pos_key_terms)
     print (str(len(neg_key_terms.keys())), " negative key words extracted.")
     #print (neg_key_terms)
-    print ("\n  Extracting context terms.")
     
-    # TODO: parallelize this code, can go faster
+    print ("\n  Extracting context terms.")
     # extracting context term occurrences and count
+    # context_pp - +ve context scores in -ve side, context_pn - +ve context scores in -ve side
     context_pp, context_pp_count = get_context_dict(list(pos_key_terms.keys()), key_occurrance_pp, train_positive)
     print (len(context_pp.keys()), context_pp_count)
     context_pn, context_pn_count = get_context_dict(list(pos_key_terms.keys()), key_occurrance_pn, train_negative)
@@ -155,9 +179,10 @@ if __name__ == '__main__':
     print (len(context_np), context_np_count)
     key_occurrance_pp.clear(); key_occurrance_pn.clear(); key_occurrance_nn.clear(); key_occurrance_np.clear
     gc.collect()
-    # extracting context terms
+    # extracting context terms, active_pos_keys represents those positive keys with context terms associated with it
     pos_context_terms, active_pos_keys = get_context_terms(context_pp, context_pn, context_pp_count, context_nn_count)
     print ("\n \n")
+    # active_neg_keys represents those negative keys with context terms associated with it
     neg_context_terms, active_neg_keys = get_context_terms(context_nn, context_np, context_nn_count, context_pp_count)
     context_pp.clear(); context_pn.clear(); context_nn.clear(); context_np.clear()
     gc.collect()
@@ -166,8 +191,21 @@ if __name__ == '__main__':
     #print (pos_context_terms)
     print ("Extracted ", str(len(neg_context_terms.keys())), " negative context terms.")
     #print (neg_context_terms)
-    print ("\n Testing :")
     gc.collect()
-    X_test = vectorizer_pos.transform(test_positive)
-    print(X_test.toarray().sum(axis=0))
+    
+    print ("\n Extracting Features:")
+    pos_keys = set(pos_key_terms.keys())
+    neg_keys = set(neg_key_terms.keys())
+    # TODO: vectorize here
+    for rev_idx, review in enumerate(train_positive):
+        pos_feature_vals_train.append(get_features_1_to_5(review, pos_keys, pos_key_terms))
+           
+    for rev_idx, review in enumerate(train_negative):   
+        neg_feature_vals_train.append(get_features_1_to_5(review, neg_keys, neg_key_terms))
+    print (pos_feature_vals_train) 
+    print ("\n \n")
+    print (neg_feature_vals_train) 
+    print ("\n Testing :")
+    # X_test = vectorizer_pos.transform(test_positive)
+    # print(X_test.toarray().sum(axis=0))
     
