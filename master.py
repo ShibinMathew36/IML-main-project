@@ -23,7 +23,6 @@ context_terms = []
 # feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores  
 pos_feature_vals_train = []
 neg_feature_vals_train = []
-# feature_vals = [[]]
 
 # Constants used:
 # TODO: all values are dummy, need to figure out actuals
@@ -121,10 +120,12 @@ def get_context_terms(context_prim, context_sec, context_prim_count, context_sec
     return context_terms, active_prim_keys
 
 
-def get_features_1_to_5(review, keys_set, key_terms):
-    features = [0, 0, 0, 0, 0]
+def get_features_1_to_7(review, key_terms, active_keys):
+    keys_set = set(key_terms.keys())
+    features = [0]*7
     data = set(review.split())
     keys_inter = keys_set.intersection(data)
+    inactive_keys = keys_inter.difference(active_keys)
     if len(keys_inter) != 0:
         features[0] = len(keys_inter)
         key_scores = [key_terms[val] for val in keys_inter]
@@ -135,7 +136,8 @@ def get_features_1_to_5(review, keys_set, key_terms):
            features[4] = 0
         else:    
            features[4] = stat.stdev(key_scores)
-    
+        features[5] = len(inactive_keys)
+        features[6] = float((features[5] * 100)/ len(keys_inter))
     return features
 
 if __name__ == '__main__':
@@ -194,14 +196,12 @@ if __name__ == '__main__':
     gc.collect()
     
     print ("\n Extracting Features:")
-    pos_keys = set(pos_key_terms.keys())
-    neg_keys = set(neg_key_terms.keys())
     # TODO: vectorize here
     for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_5(review, pos_keys, pos_key_terms))
+        pos_feature_vals_train.append(get_features_1_to_7(review, pos_key_terms, active_pos_keys))
            
     for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_5(review, neg_keys, neg_key_terms))
+        neg_feature_vals_train.append(get_features_1_to_7(review, neg_key_terms, active_neg_keys))
     print (pos_feature_vals_train) 
     print ("\n \n")
     print (neg_feature_vals_train) 
