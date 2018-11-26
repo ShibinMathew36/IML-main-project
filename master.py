@@ -20,7 +20,8 @@ key_term_occurance_neg = []
 context_terms = []
 
 # training data * feature values
-# feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores  
+# feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores, inactive_keys, inactive_key_%
+#               max_dist_btw_keys, min_distance_btw_keys
 pos_feature_vals_train = []
 neg_feature_vals_train = []
 
@@ -119,16 +120,35 @@ def get_context_terms(context_prim, context_sec, context_prim_count, context_sec
             active_prim_keys.add(context_prim[val][0])
     return context_terms, active_prim_keys
 
+def max_avg_stddev(values):
+    if len(values) == 1:
+        return [values[0]] * 3
+    else:
+        dif = []
+        for index, val in enumerate(values):
+            if index == (len(values) - 1):
+                break
+            dif.append(values[index + 1] - values[index])
+        std_dev = 0
+        if len(dif) > 1:
+            std_dev = stat.stdev(dif)
+        return [max(dif), float(sum(dif) / len(dif)), std_dev]
 
 def get_features_1_to_7(review, key_terms, active_keys):
-    keys_set = set(key_terms.keys())
-    features = [0]*7
-    data = set(review.split())
-    keys_inter = keys_set.intersection(data)
-    inactive_keys = keys_inter.difference(active_keys)
+    #keys_set = set(key_terms.keys())
+    features = [0]*11
+    keys_inter = []
+    key_inter_pos = []
+    key_scores = []
+    #keys_inter = keys_set.intersection(set(review))
+    for index, word in enumerate(review):
+        if word in key_terms:
+            keys_inter.append(word)
+            key_inter_pos.append(index)
+            key_scores.append(key_terms[word])
+    inactive_keys = set(keys_inter).difference(active_keys)
     if len(keys_inter) != 0:
         features[0] = len(keys_inter)
-        key_scores = [key_terms[val] for val in keys_inter]
         features[1] = max(key_scores)
         features[2] = min(key_scores)
         features[3] = float(sum(key_scores) / features[0])
@@ -138,6 +158,7 @@ def get_features_1_to_7(review, key_terms, active_keys):
            features[4] = stat.stdev(key_scores)
         features[5] = len(inactive_keys)
         features[6] = float((features[5] * 100)/ len(keys_inter))
+        features += max_avg_stddev(key_inter_pos)
     return features
 
 if __name__ == '__main__':
@@ -171,13 +192,13 @@ if __name__ == '__main__':
     print ("\n  Extracting context terms.")
     # extracting context term occurrences and count
     # context_pp - +ve context scores in -ve side, context_pn - +ve context scores in -ve side
-    context_pp, context_pp_count = get_context_dict(list(pos_key_terms.keys()), key_occurrance_pp, train_positive)
+    context_pp, context_pp_count = get_context_dict(pos_key_terms.keys(), key_occurrance_pp, train_positive)
     print (len(context_pp.keys()), context_pp_count)
-    context_pn, context_pn_count = get_context_dict(list(pos_key_terms.keys()), key_occurrance_pn, train_negative)
+    context_pn, context_pn_count = get_context_dict(pos_key_terms.keys(), key_occurrance_pn, train_negative)
     print (len(context_pn.keys()), context_pn_count)
-    context_nn, context_nn_count = get_context_dict(list(neg_key_terms.keys()), key_occurrance_nn, train_negative)
+    context_nn, context_nn_count = get_context_dict(neg_key_terms.keys(), key_occurrance_nn, train_negative)
     print (len(context_nn.keys()), context_nn_count)
-    context_np, context_np_count = get_context_dict(list(neg_key_terms.keys()), key_occurrance_np, train_positive)
+    context_np, context_np_count = get_context_dict(neg_key_terms.keys(), key_occurrance_np, train_positive)
     print (len(context_np), context_np_count)
     key_occurrance_pp.clear(); key_occurrance_pn.clear(); key_occurrance_nn.clear(); key_occurrance_np.clear
     gc.collect()
@@ -196,15 +217,15 @@ if __name__ == '__main__':
     gc.collect()
     
     print ("\n Extracting Features:")
-    # TODO: vectorize here
+    # TODO: vectorize here ?
     for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_7(review, pos_key_terms, active_pos_keys))
+        pos_feature_vals_train.append(get_features_1_to_7(review.split(), pos_key_terms, active_pos_keys))
            
     for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_7(review, neg_key_terms, active_neg_keys))
-    print (pos_feature_vals_train) 
-    print ("\n \n")
-    print (neg_feature_vals_train) 
+        neg_feature_vals_train.append(get_features_1_to_7(review.split(), neg_key_terms, active_neg_keys))
+    #print (pos_feature_vals_train)
+    #print ("\n \n")
+    #print (neg_feature_vals_train)
     print ("\n Testing :")
     # X_test = vectorizer_pos.transform(test_positive)
     # print(X_test.toarray().sum(axis=0))
