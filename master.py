@@ -31,6 +31,7 @@ key_term_threshold = 5
 context_span = 3
 context_term_val_threshold = 0
 
+# returns extracted and cleaned reviews from respective path
 def get_data(path):
     data = []
     temp = 0
@@ -58,6 +59,8 @@ def get_data(path):
         temp += 1
     return data
 
+
+# returns the key terms and their occurrences in both positive and negative reviews(helps extracting contexts)
 def get_key_terms(X_train, Y_train,  prim_freq, sec_freq, prim_sec_ratio):
     # TODO: include code to do dirichlet smoothing
     prim_train = np.array(X_train.toarray())
@@ -85,6 +88,7 @@ def get_key_terms(X_train, Y_train,  prim_freq, sec_freq, prim_sec_ratio):
     return prim_key_terms, prim_term_occurance, sec_term_occurance
 
 
+#returns dict containing the associated key term and number of occurrences of each context term and total count
 def get_context_dict(key_terms, key_term_occurance, train):
     context_dict = {}
     count = 0
@@ -106,6 +110,7 @@ def get_context_dict(key_terms, key_term_occurance, train):
     return context_dict, count
 
 
+# extracts context terms based on score
 def get_context_terms(context_prim, context_sec, context_prim_count, context_sec_count):
     context_terms = {}
     active_prim_keys = set()
@@ -120,6 +125,8 @@ def get_context_terms(context_prim, context_sec, context_prim_count, context_sec
             active_prim_keys.add(context_prim[val][0])
     return context_terms, active_prim_keys
 
+
+# returns max, avg and std dev of the distance between successive key terms in the review
 def max_avg_stddev(values):
     if len(values) == 1:
         return [values[0]] * 3
@@ -134,18 +141,27 @@ def max_avg_stddev(values):
             std_dev = stat.stdev(dif)
         return [max(dif), float(sum(dif) / len(dif)), std_dev]
 
-def get_features_1_to_7(review, key_terms, active_keys):
+
+# extracts the first 10 feature values
+def get_features_1_to_10(review, key_terms, active_keys):
     #keys_set = set(key_terms.keys())
-    features = [0]*11
+    features = [0]*10
     keys_inter = []
     key_inter_pos = []
     key_scores = []
+    interval_10 = []; temp = 0
     #keys_inter = keys_set.intersection(set(review))
     for index, word in enumerate(review):
         if word in key_terms:
+            temp += 1
             keys_inter.append(word)
             key_inter_pos.append(index)
             key_scores.append(key_terms[word])
+        if (index + 1) % 10 == 0:
+            interval_10.append(temp)
+            temp = 0
+        elif index == (len(review) - 1):
+            interval_10.append(temp)
     inactive_keys = set(keys_inter).difference(active_keys)
     if len(keys_inter) != 0:
         features[0] = len(keys_inter)
@@ -159,7 +175,9 @@ def get_features_1_to_7(review, key_terms, active_keys):
         features[5] = len(inactive_keys)
         features[6] = float((features[5] * 100)/ len(keys_inter))
         features += max_avg_stddev(key_inter_pos)
+        features[10] = max(interval_10)
     return features
+
 
 if __name__ == '__main__':
 
@@ -219,10 +237,10 @@ if __name__ == '__main__':
     print ("\n Extracting Features:")
     # TODO: vectorize here ?
     for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_7(review.split(), pos_key_terms, active_pos_keys))
+        pos_feature_vals_train.append(get_features_1_to_10(review.split(), pos_key_terms, active_pos_keys))
            
     for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_7(review.split(), neg_key_terms, active_neg_keys))
+        neg_feature_vals_train.append(get_features_1_to_10(review.split(), neg_key_terms, active_neg_keys))
     #print (pos_feature_vals_train)
     #print ("\n \n")
     #print (neg_feature_vals_train)
