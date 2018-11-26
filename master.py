@@ -91,7 +91,6 @@ def get_key_terms(X_train, Y_train,  prim_freq, sec_freq, prim_sec_ratio):
 #returns dict containing the associated key term and number of occurrences of each context term and total count
 def get_context_dict(key_terms, key_term_occurance, train):
     context_dict = {}
-    count = 0
     for index, key in enumerate(key_terms):
         for review_index in key_term_occurance[index]:
             review = train[review_index].split()
@@ -106,20 +105,24 @@ def get_context_dict(key_terms, key_term_occurance, train):
                         context_dict[word] = temp
                     else:
                         context_dict[word] = (key, 1)
-                    count += 1
-    return context_dict, count
+    return context_dict
 
 
 # extracts context terms based on score
-def get_context_terms(context_prim, context_sec, context_prim_count, context_sec_count):
+def get_context_terms(context_prim, context_sec, prim_key_freq, sec_key_freq):
     context_terms = {}
     active_prim_keys = set()
     for val in context_prim.keys():
         neg_freq = 0 # is the ideal initializer ?
+        neg_key_freq = 0
         if val in context_sec:
             neg_freq = context_sec[val][1]
-        #print ((context_prim[val] / context_prim_count) - (neg_freq / context_sec_count), end="  ")
-        score = float(context_prim[val][1] / context_prim_count) - (neg_freq / context_sec_count)
+        if context_prim[val][0] in sec_key_freq:
+            neg_key_freq = sec_key_freq[context_prim[val][0]]
+        else:
+            neg_freq = 0
+            neg_key_freq = 1	 
+        score = float(context_prim[val][1] / prim_key_freq[context_prim[val][0]]) - (neg_freq / neg_key_freq)
         if score >= context_term_val_threshold:
             context_terms[val] = score
             active_prim_keys.add(context_prim[val][0])
@@ -141,20 +144,43 @@ def max_avg_stddev(values):
             std_dev = stat.stdev(dif)
         return [max(dif), float(sum(dif) / len(dif)), std_dev]
 
+# returns the sliding window max for window sizes 10, 20, 30 
+def sliding_window(interval_10):
+    max_10 = 0
+    max_20 = 0; temp_20 = 0
+    max_30 = 0; temp_30 = 0
+    for idx, val in enumerate(interval_10):
+        temp_20 += val; temp_30 += val
+        max_10 = max(max_10, val)
+        if ((idx + 1) % 2 == 0):
+           max_20 = max(temp_20, max_20)
+           temp_20 = 0
+        if ((idx + 1) % 3 == 0):
+           max_30 = max(temp_30, max_30)
+           temp_30 = 0
+        if idx == (len(interval_10) - 1):
+           max_20 = max(temp_20, max_20)
+           max_30 = max(temp_30, max_30)
+    return [max_10, max_20, max_30]
 
-# extracts the first 10 feature values
-def get_features_1_to_10(review, key_terms, active_keys):
+
+# extracts the first 16 feature values
+def get_features_1_to_16(review, key_terms, active_keys):
     #keys_set = set(key_terms.keys())
-    features = [0]*10
-    keys_inter = []
+    features = [0]*7
+    keys_inter = {}
     key_inter_pos = []
     key_scores = []
     interval_10 = []; temp = 0
-    #keys_inter = keys_set.intersection(set(review))
+    total_count = 0
     for index, word in enumerate(review):
         if word in key_terms:
+            total_count += 1
             temp += 1
-            keys_inter.append(word)
+            if word in keys_inter:
+                keys_inter[word] += 1
+            else:
+                keys_inter[word] = 1
             key_inter_pos.append(index)
             key_scores.append(key_terms[word])
         if (index + 1) % 10 == 0:
@@ -162,9 +188,9 @@ def get_features_1_to_10(review, key_terms, active_keys):
             temp = 0
         elif index == (len(review) - 1):
             interval_10.append(temp)
-    inactive_keys = set(keys_inter).difference(active_keys)
-    if len(keys_inter) != 0:
-        features[0] = len(keys_inter)
+    inactive_keys = set(keys_inter.keys()).difference(active_keys)
+    if total_count != 0:
+        features[0] = total_count
         features[1] = max(key_scores)
         features[2] = min(key_scores)
         features[3] = float(sum(key_scores) / features[0])
@@ -173,9 +199,15 @@ def get_features_1_to_10(review, key_terms, active_keys):
         else:    
            features[4] = stat.stdev(key_scores)
         features[5] = len(inactive_keys)
-        features[6] = float((features[5] * 100)/ len(keys_inter))
+        features[6] = float((features[5] * 100)/ total_count)
         features += max_avg_stddev(key_inter_pos)
-        features[10] = max(interval_10)
+        features += sliding_window(interval_10)
+        features.append(max(list(key_terms.values())))
+        features.append(float(total_count / len(key_terms.keys())))
+        if len(key_terms.keys()) == 1:
+            features.append(0)
+        else:
+            features.append(stat.stdev(list(key_terms.values())))
     return features
 
 
@@ -210,21 +242,21 @@ if __name__ == '__main__':
     print ("\n  Extracting context terms.")
     # extracting context term occurrences and count
     # context_pp - +ve context scores in -ve side, context_pn - +ve context scores in -ve side
-    context_pp, context_pp_count = get_context_dict(pos_key_terms.keys(), key_occurrance_pp, train_positive)
-    print (len(context_pp.keys()), context_pp_count)
-    context_pn, context_pn_count = get_context_dict(pos_key_terms.keys(), key_occurrance_pn, train_negative)
-    print (len(context_pn.keys()), context_pn_count)
-    context_nn, context_nn_count = get_context_dict(neg_key_terms.keys(), key_occurrance_nn, train_negative)
-    print (len(context_nn.keys()), context_nn_count)
-    context_np, context_np_count = get_context_dict(neg_key_terms.keys(), key_occurrance_np, train_positive)
-    print (len(context_np), context_np_count)
+    context_pp = get_context_dict(pos_key_terms.keys(), key_occurrance_pp, train_positive)
+    print (len(context_pp.keys()))
+    context_pn = get_context_dict(pos_key_terms.keys(), key_occurrance_pn, train_negative)
+    print (len(context_pn.keys()))
+    context_nn = get_context_dict(neg_key_terms.keys(), key_occurrance_nn, train_negative)
+    print (len(context_nn.keys()))
+    context_np = get_context_dict(neg_key_terms.keys(), key_occurrance_np, train_positive)
+    print (len(context_np))
     key_occurrance_pp.clear(); key_occurrance_pn.clear(); key_occurrance_nn.clear(); key_occurrance_np.clear
     gc.collect()
     # extracting context terms, active_pos_keys represents those positive keys with context terms associated with it
-    pos_context_terms, active_pos_keys = get_context_terms(context_pp, context_pn, context_pp_count, context_nn_count)
+    pos_context_terms, active_pos_keys = get_context_terms(context_pp, context_pn, pos_features, neg_features)
     print ("\n \n")
     # active_neg_keys represents those negative keys with context terms associated with it
-    neg_context_terms, active_neg_keys = get_context_terms(context_nn, context_np, context_nn_count, context_pp_count)
+    neg_context_terms, active_neg_keys = get_context_terms(context_nn, context_np, neg_features, pos_features)
     context_pp.clear(); context_pn.clear(); context_nn.clear(); context_np.clear()
     gc.collect()
 
@@ -237,10 +269,10 @@ if __name__ == '__main__':
     print ("\n Extracting Features:")
     # TODO: vectorize here ?
     for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_10(review.split(), pos_key_terms, active_pos_keys))
+        pos_feature_vals_train.append(get_features_1_to_16(review.split(), pos_key_terms, active_pos_keys))
            
     for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_10(review.split(), neg_key_terms, active_neg_keys))
+        neg_feature_vals_train.append(get_features_1_to_16(review.split(), neg_key_terms, active_neg_keys))
     #print (pos_feature_vals_train)
     #print ("\n \n")
     #print (neg_feature_vals_train)
