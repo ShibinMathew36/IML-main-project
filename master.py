@@ -14,7 +14,6 @@ test_pos_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/test/p
 test_neg_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/test/neg/"
 vectorizer_pos = CountVectorizer()
 vectorizer_neg = CountVectorizer()
-pos_key_terms = []
 key_term_occurance_pos = []
 key_term_occurance_neg = []
 context_terms = []
@@ -53,12 +52,12 @@ def get_data(path):
         temp += 1
     return data
 
-def get_key_terms(X_train, Y_train,  prim_freq, sec_freq, pos_neg_ratio):
+def get_key_terms(X_train, Y_train,  prim_freq, sec_freq, prim_sec_ratio):
     # TODO: include code to do dirichlet smoothing
     prim_train = np.array(X_train.toarray())
     sec_train = np.array(Y_train.toarray())
     temp = 0
-    prim_key_terms = []
+    prim_key_terms = col.OrderedDict()
     prim_term_occurance = []
     sec_term_occurance = []
 
@@ -68,8 +67,9 @@ def get_key_terms(X_train, Y_train,  prim_freq, sec_freq, pos_neg_ratio):
         if key in sec_freq.keys():
             temp_sec_freq = sec_freq[key]
             flag = True
-        if (prim_freq[key] / temp_sec_freq) * pos_neg_ratio > key_term_threshold:
-            prim_key_terms.append(key)
+        score = float((prim_freq[key] / temp_sec_freq) * prim_sec_ratio)
+        if score > key_term_threshold:
+            prim_key_terms[key] = score
             prim_term_occurance.append(np.flatnonzero(prim_train[:, temp]).tolist())
             if flag:
                 sec_term_occurance.append(np.flatnonzero(sec_train[:, list(sec_freq.keys()).index(key)]).tolist())
@@ -92,24 +92,27 @@ def get_context_dict(key_terms, key_term_occurance, train):
                 substring = review[start:position] + review[(position + 1):end]
                 for word in substring:
                     if word in context_dict:
-                        context_dict[word] += 1
-                        count += 1
+                        temp = (context_dict[word][0], context_dict[word][1] + 1)
+                        context_dict[word] = temp
                     else:
-                        context_dict[word] = 1
-                        count += 1
+                        context_dict[word] = (key, 1)
+                    count += 1
     return context_dict, count
 
 
 def get_context_terms(context_prim, context_sec, context_prim_count, context_sec_count):
-    context_terms = []
+    context_terms = {}
+    active_prim_keys = set()
     for val in context_prim.keys():
         neg_freq = 0 # is the ideal initializer ?
         if val in context_sec:
-            neg_freq = context_sec[val]
+            neg_freq = context_sec[val][1]
         #print ((context_prim[val] / context_prim_count) - (neg_freq / context_sec_count), end="  ")
-        if ((context_prim[val] / context_prim_count) - (neg_freq / context_sec_count)) >= context_term_val_threshold:
-            context_terms.append(val)
-    return context_terms
+        score = float(context_prim[val][1] / context_prim_count) - (neg_freq / context_sec_count)
+        if score >= context_term_val_threshold:
+            context_terms[val] = score
+            active_prim_keys.add(context_prim[val][0])
+    return context_terms, active_prim_keys
 
 if __name__ == '__main__':
 
@@ -127,41 +130,42 @@ if __name__ == '__main__':
     print ("Total positive words = ", train_pos.sum())
     print ("Total negative words = ", train_neg.sum()) # will this be a problem since i train with same classifier
 
-    pos_neg_ratio = float(train_neg.sum() / train_pos.sum())
     pos_features = col.OrderedDict(zip(vectorizer_pos.get_feature_names(), train_pos))
     neg_features = col.OrderedDict(zip(vectorizer_neg.get_feature_names(), train_neg))
 
     print ("\n  Extracting key words.")
     gc.collect()
-    pos_key_terms, key_occurrance_pp, key_occurrance_pn = get_key_terms(X_train, Y_train, pos_features, neg_features, pos_neg_ratio)
-    neg_key_terms, key_occurrance_nn, key_occurrance_np = get_key_terms(Y_train, X_train, neg_features, pos_features, pos_neg_ratio)
-    print (str(len(pos_key_terms)), " positive key words extracted.")
-    print (str(len(neg_key_terms)), " negative key words extracted.")
+    pos_key_terms, key_occurrance_pp, key_occurrance_pn = get_key_terms(X_train, Y_train, pos_features, neg_features, float(train_neg.sum() / train_pos.sum()))
+    neg_key_terms, key_occurrance_nn, key_occurrance_np = get_key_terms(Y_train, X_train, neg_features, pos_features, float(train_pos.sum() / train_neg.sum()))
+    print (str(len(pos_key_terms.keys())), " positive key words extracted.")
+    #print (pos_key_terms)
+    print (str(len(neg_key_terms.keys())), " negative key words extracted.")
+    #print (neg_key_terms)
     print ("\n  Extracting context terms.")
     
     # TODO: parallelize this code, can go faster
     # extracting context term occurrences and count
-    context_pp, context_pp_count = get_context_dict(pos_key_terms, key_occurrance_pp, train_positive)
-    print (len(context_pp), context_pp_count)
-    context_pn, context_pn_count = get_context_dict(pos_key_terms, key_occurrance_pn, train_negative)
-    print (len(context_pn), context_pn_count)
-    context_nn, context_nn_count = get_context_dict(neg_key_terms, key_occurrance_nn, train_negative)
-    print (len(context_nn), context_nn_count)
-    context_np, context_np_count = get_context_dict(neg_key_terms, key_occurrance_np, train_positive)
+    context_pp, context_pp_count = get_context_dict(list(pos_key_terms.keys()), key_occurrance_pp, train_positive)
+    print (len(context_pp.keys()), context_pp_count)
+    context_pn, context_pn_count = get_context_dict(list(pos_key_terms.keys()), key_occurrance_pn, train_negative)
+    print (len(context_pn.keys()), context_pn_count)
+    context_nn, context_nn_count = get_context_dict(list(neg_key_terms.keys()), key_occurrance_nn, train_negative)
+    print (len(context_nn.keys()), context_nn_count)
+    context_np, context_np_count = get_context_dict(list(neg_key_terms.keys()), key_occurrance_np, train_positive)
     print (len(context_np), context_np_count)
     key_occurrance_pp.clear(); key_occurrance_pn.clear(); key_occurrance_nn.clear(); key_occurrance_np.clear
     gc.collect()
     # extracting context terms
-    pos_context_terms = get_context_terms(context_pp, context_pn, context_pp_count, context_nn_count)
+    pos_context_terms, active_pos_keys = get_context_terms(context_pp, context_pn, context_pp_count, context_nn_count)
     print ("\n \n")
-    neg_context_terms = get_context_terms(context_nn, context_np, context_nn_count, context_pp_count)
+    neg_context_terms, active_neg_keys = get_context_terms(context_nn, context_np, context_nn_count, context_pp_count)
     context_pp.clear(); context_pn.clear(); context_nn.clear(); context_np.clear()
     gc.collect()
 
-    print ("Extracted ", str(len(pos_context_terms)), " positive context terms.")
-    print (pos_context_terms[:200])
-    print ("Extracted ", str(len(neg_context_terms)), " negative context terms.")
-    print (neg_context_terms[:200])
+    print ("Extracted ", str(len(pos_context_terms.keys())), " positive context terms.")
+    #print (pos_context_terms)
+    print ("Extracted ", str(len(neg_context_terms.keys())), " negative context terms.")
+    #print (neg_context_terms)
     print ("\n Testing :")
     gc.collect()
     X_test = vectorizer_pos.transform(test_positive)
