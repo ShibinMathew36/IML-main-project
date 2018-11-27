@@ -28,7 +28,6 @@ pos_feature_vals_train = []
 neg_feature_vals_train = []
 
 # Constants used:
-# TODO: all values are dummy, need to figure out actuals
 key_term_threshold = 5
 context_span = 3
 context_term_val_threshold = 0
@@ -48,10 +47,7 @@ def get_data(path):
         infile.close()
         table = str.maketrans(string.punctuation, ' '*len(string.punctuation))
         stripped = [w.translate(table) for w in words]
-
-        # TODO: check efficiency will improve removing words smaller than 2 and greater than 15
         words = [word for word in stripped if word.isalpha()]
-
         # filter out stop words
         words = [w for w in words if not w in stp_words]
         a = ' '.join(words)
@@ -172,7 +168,7 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
     percents = []
     common_context_scores = []
     context_score_ratio = []
-    for key in key_terms:
+    for key in key_terms.keys():
         contexts = context_stored_scores[key]
         if key in active_keys:
             context_score_sum = []
@@ -180,14 +176,13 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
                 substring = fetch_substring(review, key, occurrence)
                 for l_string in substring:
                     if l_string in contexts:
-                        context_score_sum.append(contexts[l_string])
-                # TODO: broken, fix this
-                commons = set(substring).intersection(active_keys[key]) 
-                percents.append(float((len(commons) * 100) / len(active_keys[key])))
+                        context_score_sum.append(contexts[l_string]) # TODO:  is this across all contexts ?
+                commons = set(substring).intersection(set(list(contexts.keys()))) 
+                percents.append(float((len(commons) * 100) / len(contexts.keys())))
                 freqs.append(len(commons))
                 avg = []
                 for context in commons:
-                    avg.append(context_stored_scores[context])
+                    avg.append(contexts[context])
                 temp = float(sum(avg) / max(1, len(avg)))
                 common_context_scores.append(temp)
                 context_score_ratio.append(temp / max(1, (sum(context_score_sum) / max(1, len(context_score_sum)))))
@@ -309,7 +304,6 @@ if __name__ == '__main__':
     neg_key_context_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp, neg_word_freq, pos_word_freq)
     pos_key_context_map_temp.clear(); neg_key_context_map_temp.clear()
     gc.collect()
-    print (pos_key_context_map)
 
     print ("\n Extracting Features:")
     # TODO: vectorize here ?
