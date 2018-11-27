@@ -178,21 +178,29 @@ def sliding_window(interval_10):
 # extracts features related to context terms
 def context_related_features(review, key_terms, active_keys):
     freqs = []
+    percents = []
     for key in key_terms:
         if key in active_keys:
             for occurrence in key_terms[key]:
                 substring = fetch_substring(review, key, occurrence)
-                freqs.append(len(set(substring).intersection(active_keys[key])))
+                commons = set(substring).intersection(active_keys[key]) 
+                percents.append(float((len(commons) * 100) / len(active_keys[key])))
+                freqs.append(len(commons))
         else:
             freqs.append(0)
-    stddev = 0
+            percents.append(0)
+    stddev_1 = 0; stddev_2 = 0
     if len(freqs) > 1:
-        stddev = stat.stdev(freqs)
-    return [(sum(freqs) / max(1, len(freqs))), stddev]    
+        stddev_1 = stat.stdev(freqs)
+        stddev_2 = stat.stdev(percents)
+        return [0]*6
+    context_features = [max(freqs), float(sum(freqs) / max(1, len(freqs))), stddev_1]    
+    context_features += [max(percents), float(sum(percents) / max(1, len(percents))), stddev_2]
+    return context_features
 
 
-# extracts the first 16 feature values
-def get_features_1_to_20(review, key_terms, active_keys, key_frequencies, total_words):
+# extracts the first 23 feature values
+def get_features_1_to_23(review, key_terms, active_keys, key_frequencies, total_words):
     #keys_set = set(key_terms.keys())
     features = [0]*7
     keys_inter = {}
@@ -306,10 +314,10 @@ if __name__ == '__main__':
     print ("\n Extracting Features:")
     # TODO: vectorize here ?
     for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_20(review.split(), pos_key_terms, active_pos_keys, pos_features, train_pos_sum))
+        pos_feature_vals_train.append(get_features_1_to_23(review.split(), pos_key_terms, active_pos_keys, pos_features, train_pos_sum))
            
     for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_20(review.split(), neg_key_terms, active_neg_keys, neg_features, train_neg_sum))
+        neg_feature_vals_train.append(get_features_1_to_23(review.split(), neg_key_terms, active_neg_keys, neg_features, train_neg_sum))
     #print (pos_feature_vals_train)
     #print ("\n \n")
     #print (neg_feature_vals_train)
