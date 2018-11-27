@@ -209,7 +209,7 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
         stddev_2 = stat.stdev(percents)
         stddev_3 = stat.stdev(common_context_scores)
         stddev_4 = stat.stdev(context_score_ratio)
-        return [0]*9
+        return [0]*12
     context_features = [max(freqs), float(sum(freqs) / max(1, len(freqs))), stddev_1]    
     context_features += [max(percents), float(sum(percents) / max(1, len(percents))), stddev_2]
     context_features += [max(common_context_scores), float(sum(common_context_scores) / max(1, len(common_context_scores))), stddev_3]
