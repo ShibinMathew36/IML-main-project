@@ -54,7 +54,6 @@ def get_data(path):
         words = [word for word in stripped if word.isalpha()]
 
         # filter out stop words
-
         words = [w for w in words if not w in stp_words]
         a = ' '.join(words)
         data.append(a)
@@ -100,7 +99,7 @@ def fetch_substring(review, key, position = -1):
 
 #returns dict containing the associated key term and number of occurrences of each context term and total count
 def get_context_dict(key_terms, key_term_occurance, train):
-    context_dict = {}
+    context_dict = {}  # dict mapping each context term to associated key word and its frequency
     for index, key in enumerate(key_terms):
         for review_index in key_term_occurance[index]:
             review = train[review_index].split()
@@ -108,6 +107,7 @@ def get_context_dict(key_terms, key_term_occurance, train):
                 substring = fetch_substring(review, key)
                 for word in substring:
                     if word in context_dict:
+                        # TODO: same context can be associated to mutliple keys -- problem, replace with structures or dict of dict same below
                         temp = (context_dict[word][0], context_dict[word][1] + 1)
                         context_dict[word] = temp
                     else:
@@ -117,8 +117,8 @@ def get_context_dict(key_terms, key_term_occurance, train):
 
 # extracts context terms based on score
 def get_context_terms(context_prim, context_sec, prim_key_freq, sec_key_freq):
-    context_terms = {}
-    active_prim_keys = {}
+    context_terms = {}  # dict mapping each context term to its score
+    active_prim_keys = {}  # dict mapping each key term to the associated context terms
     for val in context_prim.keys():
         neg_freq = 0 # is the ideal initializer ?
         neg_key_freq = 0
