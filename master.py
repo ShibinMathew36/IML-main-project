@@ -21,7 +21,6 @@ key_term_occurance_neg = []
 ignore_stops = set(["mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", 'very', "doesn't", 'needn', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', "mustn't", 'mightn', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'few', 'weren', 'nor', 'does', 'couldn', 'but', 'down', "shouldn't", 'aren', 'won', "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'too', 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", "doesn't", 'needn', 'shan', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', 'most', "mustn't", 'mightn', 'above', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'off', 'couldn', "shouldn't", 'aren', 'won'])
 
 stp_words = set(stopwords.words('english')) - ignore_stops
-# training data * feature values
 # feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores, inactive_keys, inactive_key_%
 #               max_dist_btw_keys, min_distance_btw_keys
 pos_feature_vals_train = []
@@ -168,15 +167,18 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
     percents = []
     common_context_scores = []
     context_score_ratio = []
+    present_contexts_freq = {}
+    all_contexts = []
+    for ctx in context_stored_scores.values():
+        all_contexts += list(ctx.keys())
+    all_contexts = set(all_contexts) 
     for key in key_terms.keys():
         contexts = context_stored_scores[key]
         if key in active_keys:
             context_score_sum = []
             for occurrence in key_terms[key]:
                 substring = fetch_substring(review, key, occurrence)
-                for l_string in substring:
-                    if l_string in contexts:
-                        context_score_sum.append(contexts[l_string]) # TODO:  is this across all contexts ?
+                all_contexts_avg = float(sum(list(contexts.values())) / len(contexts.keys()))
                 commons = set(substring).intersection(set(list(contexts.keys()))) 
                 percents.append(float((len(commons) * 100) / len(contexts.keys())))
                 freqs.append(len(commons))
@@ -185,23 +187,32 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
                     avg.append(contexts[context])
                 temp = float(sum(avg) / max(1, len(avg)))
                 common_context_scores.append(temp)
-                context_score_ratio.append(temp / max(1, (sum(context_score_sum) / max(1, len(context_score_sum)))))
+                context_score_ratio.append(temp / all_contexts_avg)
+                for term in substring:
+                    if term in all_contexts:
+                        if term in present_contexts_freq:
+                            present_contexts_freq[term] += 1
+                        else:
+                            present_contexts_freq[term] = 1
         else:
             freqs.append(0)
             percents.append(0)
             common_context_scores.append(0)
             context_score_ratio.append(0)
-    stddev_1 = 0; stddev_2 = 0; stddev_3 = 0; stddev_4 = 0
+    temp = list(present_contexts_freq.values())
+    stddev_1 = 0; stddev_2 = 0; stddev_3 = 0; stddev_4 = 0; stddev_5 = 0
     if len(freqs) > 1:
         stddev_1 = stat.stdev(freqs)
         stddev_2 = stat.stdev(percents)
         stddev_3 = stat.stdev(common_context_scores)
         stddev_4 = stat.stdev(context_score_ratio)
-        return [0]*12
+        stddev_5 = stat.stdev(temp)
+        return [0]*15
     context_features = [max(freqs), float(sum(freqs) / max(1, len(freqs))), stddev_1]    
     context_features += [max(percents), float(sum(percents) / max(1, len(percents))), stddev_2]
     context_features += [max(common_context_scores), float(sum(common_context_scores) / max(1, len(common_context_scores))), stddev_3]
     context_features += [max(context_score_ratio), float(sum(context_score_ratio) / max(1, len(context_score_ratio))), stddev_4]
+    context_features += [max(temp), float(sum(temp) / max(1, len(temp))), stddev_5]
     return context_features
 
 
@@ -245,7 +256,7 @@ def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words,
         features[6] = float((features[5] * 100)/ total_count)
         features += max_avg_stddev(key_inter_pos)
         features += sliding_window(interval_10)
-        features.append(max(list(key_term_scores.values()))) # TODO: check if this feature is correct
+        #features.append(max(list(key_term_scores.values()))) # TODO: check if this feature is correct
         features.append(float(total_count / len(key_term_scores.keys())))
         if len(key_term_scores.keys()) == 1:
             features.append(0)
