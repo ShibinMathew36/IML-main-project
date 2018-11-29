@@ -21,8 +21,12 @@ key_term_occurance_neg = []
 ignore_stops = set(["mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", 'very', "doesn't", 'needn', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', "mustn't", 'mightn', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'few', 'weren', 'nor', 'does', 'couldn', 'but', 'down', "shouldn't", 'aren', 'won', "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'too', 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", "doesn't", 'needn', 'shan', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', 'most', "mustn't", 'mightn', 'above', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'off', 'couldn', "shouldn't", 'aren', 'won'])
 
 stp_words = set(stopwords.words('english')) - ignore_stops
-# feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores, inactive_keys, inactive_key_%
-#               max_dist_btw_keys, min_distance_btw_keys
+""" training data * feature values
+ feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores, inactive_keys, inactive_key_%
+               max_dist_btw_keys, min_distance_btw_keys, no_of_keys_every_10_words, no_of_keys_every_20_words, no_of_keys_every_30_words,
+               count_of_keys/total_no_of_keys, std_dev_key_scores, avg_key_language_model, 
+"""
+
 pos_feature_vals_train = []
 neg_feature_vals_train = []
 
@@ -104,6 +108,7 @@ def get_context_dict(key_terms, key_term_occurance, train):
 # extracts context terms based on score
 def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_freq):
     key_context_score_map = {}
+    context_key_map = {}
     for prim_kt, prim_kt_val in key_context_prim.items():
         prim_key_val = prim_key_freq[prim_kt]
         sec_kt_val = {}
@@ -121,8 +126,12 @@ def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_
             score = float(prim_kt_val[prim_context]/ prim_key_val) - float(sec_context / neg_key_freq)
             if score >= context_term_val_threshold:
                 context_score_map[prim_context] = score
+                if prim_context in context_key_map:
+                    context_key_map[prim_context].add(prim_kt)
+                else:
+                    context_key_map[prim_context] = set([prim_kt])
         key_context_score_map[prim_kt] = context_score_map
-    return key_context_score_map
+    return key_context_score_map, context_key_map
 
 
 # returns max, avg and std dev of the distance between successive key terms in the review
@@ -161,21 +170,30 @@ def sliding_window(interval_10):
     return [max_10, max_20, max_30]
 
 
+def get_max_avg_stdev(data):
+    dev = 0
+    maximum = 0
+    avg = 0
+    if len(data):
+        maximum = max(data)
+        avg = float(sum(data) / max(1, len(data)))
+    if len(data) > 1:
+        dev = stat.stdev(data)
+    return [maximum, avg, dev]
+
 # extracts features related to context terms
-def context_related_features(review, key_terms, active_keys, context_stored_scores):
+def context_related_features(review, key_terms, active_keys, context_stored_scores, prim_context_key_map):
     freqs = []
     percents = []
     common_context_scores = []
     context_score_ratio = []
     present_contexts_freq = {}
-    all_contexts = []
-    for ctx in context_stored_scores.values():
-        all_contexts += list(ctx.keys())
-    all_contexts = set(all_contexts) 
+    common_key_freq_all = [] # no of key terms sharing same context across all reviews
+    common_key_freq_review = [] # no of key terms sharing the same context per review
+    all_contexts = set(list(prim_context_key_map.keys())) # set of all context terms ever encountered 
     for key in key_terms.keys():
         contexts = context_stored_scores[key]
         if key in active_keys:
-            context_score_sum = []
             for occurrence in key_terms[key]:
                 substring = fetch_substring(review, key, occurrence)
                 all_contexts_avg = float(sum(list(contexts.values())) / len(contexts.keys()))
@@ -185,6 +203,8 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
                 avg = []
                 for context in commons:
                     avg.append(contexts[context])
+                    common_key_freq_all.append(len(prim_context_key_map[context]))
+                    common_key_freq_review.append(len(set(list(key_terms.keys())).intersection(prim_context_key_map[context])))
                 temp = float(sum(avg) / max(1, len(avg)))
                 common_context_scores.append(temp)
                 context_score_ratio.append(temp / all_contexts_avg)
@@ -199,26 +219,20 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
             percents.append(0)
             common_context_scores.append(0)
             context_score_ratio.append(0)
-    temp = list(present_contexts_freq.values())
-    stddev_1 = 0; stddev_2 = 0; stddev_3 = 0; stddev_4 = 0; stddev_5 = 0
-    if len(freqs) > 1:
-        stddev_1 = stat.stdev(freqs)
-        stddev_2 = stat.stdev(percents)
-        stddev_3 = stat.stdev(common_context_scores)
-        stddev_4 = stat.stdev(context_score_ratio)
-        stddev_5 = stat.stdev(temp)
-        return [0]*15
-    context_features = [max(freqs), float(sum(freqs) / max(1, len(freqs))), stddev_1]    
-    context_features += [max(percents), float(sum(percents) / max(1, len(percents))), stddev_2]
-    context_features += [max(common_context_scores), float(sum(common_context_scores) / max(1, len(common_context_scores))), stddev_3]
-    context_features += [max(context_score_ratio), float(sum(context_score_ratio) / max(1, len(context_score_ratio))), stddev_4]
-    context_features += [max(temp), float(sum(temp) / max(1, len(temp))), stddev_5]
+    if len(freqs) == 0:
+        return [0]*19
+    context_features = get_max_avg_stdev(freqs)
+    context_features += get_max_avg_stdev(percents)
+    context_features += get_max_avg_stdev(common_context_scores)
+    context_features += get_max_avg_stdev(context_score_ratio)
+    context_features += get_max_avg_stdev(present_contexts_freq.values())
+    context_features += get_max_avg_stdev(common_key_freq_all)[1:]
+    context_features += get_max_avg_stdev(common_key_freq_review)[1:]
     return context_features
 
 
 # extracts the first 23 feature values
-def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words, key_context_scores):
-    active_keys = [kt for kt in key_context_scores if key_context_scores[kt]] # not sure if this is correct
+def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
     features = [0]*7
     keys_inter = {}
     key_inter_pos = []
@@ -267,7 +281,7 @@ def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words,
             features.append(0)
         else:
             features.append(stat.stdev(key_language_model))
-        features += context_related_features(review, keys_inter, active_keys, key_context_scores)
+        features += context_related_features(review, keys_inter, active_keys, key_context_scores, prim_context_key_map)
     else:
         features = [0]*23 # update to total number of features
     return features
@@ -309,20 +323,23 @@ if __name__ == '__main__':
     gc.collect()
 
     # extracting context terms, active_pos_keys represents those positive keys with context terms associated with it
-    pos_key_context_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp, pos_word_freq, neg_word_freq)
+    pos_key_context_map, pos_context_key_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp, pos_word_freq, neg_word_freq)
     print ("\n \n")
     # active_neg_keys represents those negative keys with context terms associated with it
-    neg_key_context_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp, neg_word_freq, pos_word_freq)
+    neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp, neg_word_freq, pos_word_freq)
     pos_key_context_map_temp.clear(); neg_key_context_map_temp.clear()
     gc.collect()
 
     print ("\n Extracting Features:")
+    active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]] # not sure if this is correct
     # TODO: vectorize here ?
     for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_23(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map))
-           
+        pos_feature_vals_train.append(get_features_1_to_23(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map, pos_context_key_map, active_keys))
+    active_keys.clear()
+    gc.collect()
+    active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]] # not sure if this is correct
     for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_23(review.split(), neg_key_scores,  neg_word_freq, train_neg_sum, neg_key_context_map))
+        neg_feature_vals_train.append(get_features_1_to_23(review.split(), neg_key_scores,  neg_word_freq, train_neg_sum, neg_key_context_map, neg_context_key_map, active_keys))
     #print (pos_feature_vals_train)
     #print ("\n \n")
     #print (neg_feature_vals_train)
