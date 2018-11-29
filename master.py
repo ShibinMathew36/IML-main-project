@@ -18,9 +18,10 @@ vectorizer_neg = CountVectorizer()
 key_term_occurance_pos = []
 key_term_occurance_neg = []
 
-ignore_stops = set(["mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", 'very', "doesn't", 'needn', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', "mustn't", 'mightn', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'few', 'weren', 'nor', 'does', 'couldn', 'but', 'down', "shouldn't", 'aren', 'won', "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'too', 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", "doesn't", 'needn', 'shan', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', 'most', "mustn't", 'mightn', 'above', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'off', 'couldn', "shouldn't", 'aren', 'won'])
-
+ignore_stops = set(["cannot", "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", 'very', "doesn't", 'needn', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', "mustn't", 'mightn', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'few', 'weren', 'nor', 'does', 'couldn', 'but', 'down', "shouldn't", 'aren', 'won', "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'too', 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", "doesn't", 'needn', 'shan', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', 'most', "mustn't", 'mightn', 'above', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'off', 'couldn', "shouldn't", 'aren', 'won'])
 stp_words = set(stopwords.words('english')) - ignore_stops
+punct = string.punctuation.replace("-", "")
+
 """ training data * feature values
  feature_list: no_of_keys, max_key_score, min_key_score, avg_key_scores, std_dev_key_scores, inactive_keys, inactive_key_%
                max_dist_btw_keys, min_distance_btw_keys, no_of_keys_every_10_words, no_of_keys_every_20_words, no_of_keys_every_30_words,
@@ -43,18 +44,21 @@ def get_data(path):
         if temp == 1000:
             break
         infile = open(files)
-
         #fix case and remove punctuations, nunbers
         dat = infile.readline().lower()
-        words = word_tokenize(dat.replace('<br />', ''))
         infile.close()
-        table = str.maketrans(string.punctuation, ' '*len(string.punctuation))
-        stripped = [w.translate(table) for w in words]
-        words = [word for word in stripped if word.isalpha()]
+        print (dat)
+        dat = dat.replace('<br />', '')
+        table = str.maketrans(punct, ' '*len(punct))
+        stripped = dat.translate(table)
+        #words = [word for word in stripped if word.isalpha()]
         # filter out stop words
-        words = [w for w in words if not w in stp_words]
+        stripped = word_tokenize(stripped)
+        words = [w for w in stripped if not w in stp_words]
         a = ' '.join(words)
         data.append(a)
+        print ("\n\n\n", a)
+        exit()
         temp += 1
     return data
 
