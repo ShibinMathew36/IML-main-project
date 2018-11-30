@@ -28,9 +28,6 @@ punct = string.punctuation.replace("-", "")
                count_of_keys/total_no_of_keys, std_dev_key_scores, avg_key_language_model, 
 """
 
-pos_feature_vals_train = []
-neg_feature_vals_train = []
-
 # Constants used:
 key_term_threshold = 5
 context_span = 3
@@ -47,7 +44,6 @@ def get_data(path):
         #fix case and remove punctuations, nunbers
         dat = infile.readline().lower()
         infile.close()
-        print (dat)
         dat = dat.replace('<br />', '')
         table = str.maketrans(punct, ' '*len(punct))
         stripped = dat.translate(table)
@@ -57,8 +53,6 @@ def get_data(path):
         words = [w for w in stripped if not w in stp_words]
         a = ' '.join(words)
         data.append(a)
-        print ("\n\n\n", a)
-        exit()
         temp += 1
     return data
 
@@ -291,21 +285,15 @@ def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words,
     return features
 
 
-if __name__ == '__main__':
-
-    p = Pool(4)
-    [train_positive, train_negative, test_positive, test_negative] = \
-        p.map(get_data, [train_pos_path, train_neg_path, test_pos_path, test_neg_path])
-    gc.collect()
-    print("\n Data extracting and preprocessing done. Processed review count = ", str(4 * len(train_positive)))
-    print ("\n Training :")
+def fetch_feature_matrix(train_positive, train_negative):
     X_train = vectorizer_pos.fit_transform(train_positive)
-    Y_train = vectorizer_neg.fit_transform(train_negative) # should we fit it with same or different classifier objects ?
+    Y_train = vectorizer_neg.fit_transform(
+        train_negative)  # should we fit it with same or different classifier objects ?
     train_pos = X_train.toarray().sum(axis=0)
     train_neg = Y_train.toarray().sum(axis=0)
     print ("\n  Extracting Language model.")
     print ("Total positive words = ", train_pos.sum())
-    print ("Total negative words = ", train_neg.sum()) # will this be a problem since i train with same classifier
+    print ("Total negative words = ", train_neg.sum())  # will this be a problem since i train with same classifier
 
     pos_word_freq = col.OrderedDict(zip(vectorizer_pos.get_feature_names(), train_pos))
     neg_word_freq = col.OrderedDict(zip(vectorizer_neg.get_feature_names(), train_neg))
@@ -314,8 +302,10 @@ if __name__ == '__main__':
     gc.collect()
     train_neg_sum = train_neg.sum()
     train_pos_sum = train_pos.sum()
-    pos_key_scores, key_occurrance_pos = get_key_terms(X_train, pos_word_freq, neg_word_freq, float(train_neg_sum / train_pos_sum))
-    neg_key_scores, key_occurrance_neg = get_key_terms(Y_train, neg_word_freq, pos_word_freq, float(train_pos_sum / train_neg_sum))
+    pos_key_scores, key_occurrance_pos = get_key_terms(X_train, pos_word_freq, neg_word_freq,
+                                                       float(train_neg_sum / train_pos_sum))
+    neg_key_scores, key_occurrance_neg = get_key_terms(Y_train, neg_word_freq, pos_word_freq,
+                                                       float(train_pos_sum / train_neg_sum))
     print (str(len(pos_key_scores.keys())), " positive key words extracted.")
     print (str(len(neg_key_scores.keys())), " negative key words extracted.")
 
@@ -323,31 +313,48 @@ if __name__ == '__main__':
     # extracting context term occurrences and count
     pos_key_context_map_temp = get_context_dict(pos_key_scores.keys(), key_occurrance_pos, train_positive)
     neg_key_context_map_temp = get_context_dict(neg_key_scores.keys(), key_occurrance_neg, train_negative)
-    key_occurrance_pos.clear(); key_occurrance_neg.clear()
+    key_occurrance_pos.clear();key_occurrance_neg.clear()
     gc.collect()
 
     # extracting context terms, active_pos_keys represents those positive keys with context terms associated with it
-    pos_key_context_map, pos_context_key_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp, pos_word_freq, neg_word_freq)
-    print ("\n \n")
+    pos_key_context_map, pos_context_key_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp,
+                                                                 pos_word_freq, neg_word_freq)
     # active_neg_keys represents those negative keys with context terms associated with it
-    neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp, neg_word_freq, pos_word_freq)
-    pos_key_context_map_temp.clear(); neg_key_context_map_temp.clear()
+    neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp,
+                                                                 neg_word_freq, pos_word_freq)
+    pos_key_context_map_temp.clear();neg_key_context_map_temp.clear()
     gc.collect()
 
-    print ("\n Extracting Features:")
-    active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]] # not sure if this is correct
-    # TODO: vectorize here ?
-    for rev_idx, review in enumerate(train_positive):
-        pos_feature_vals_train.append(get_features_1_to_23(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map, pos_context_key_map, active_keys))
+    print ("Extracting Features:")
+    pos_feature_vals_train = []
+    neg_feature_vals_train = []
+
+    active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
+    for review in train_positive:
+        pos_feature_vals_train.append(
+            get_features_1_to_23(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map,
+                                 pos_context_key_map, active_keys))
     active_keys.clear()
     gc.collect()
-    active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]] # not sure if this is correct
-    for rev_idx, review in enumerate(train_negative):   
-        neg_feature_vals_train.append(get_features_1_to_23(review.split(), neg_key_scores,  neg_word_freq, train_neg_sum, neg_key_context_map, neg_context_key_map, active_keys))
-    #print (pos_feature_vals_train)
-    #print ("\n \n")
-    #print (neg_feature_vals_train)
-    print ("\n Testing :")
-    # X_test = vectorizer_pos.transform(test_positive)
-    # print(X_test.toarray().sum(axis=0))
+    active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]]  # not sure if this is correct
+    for review in train_negative:
+        neg_feature_vals_train.append(
+            get_features_1_to_23(review.split(), neg_key_scores, neg_word_freq, train_neg_sum, neg_key_context_map,
+                                 neg_context_key_map, active_keys))
+    return pos_feature_vals_train + neg_feature_vals_train
 
+if __name__ == '__main__':
+
+    p = Pool(4)
+    [train_positive, train_negative, test_positive, test_negative] = \
+        p.map(get_data, [train_pos_path, train_neg_path, test_pos_path, test_neg_path])
+    gc.collect()
+    print("\n Data extracting and preprocessing done. Processed review count = ", str(4 * len(train_positive)))
+    print ("\n Training :")
+    feature_matrix_training_label = [1]*len(train_positive) + [0]*len(train_negative)
+    feature_matrix_training = fetch_feature_matrix(train_positive, train_negative)
+    print ("Training completed. Begin Testing!")
+    feature_matrix_testing = fetch_feature_matrix(test_positive, test_negative)
+    print ("\n Done")
+    print ("Matrix size training", len(feature_matrix_training))
+    print ("Matrix size testing", len(feature_matrix_testing))
