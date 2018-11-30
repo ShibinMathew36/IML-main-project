@@ -38,7 +38,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 1000:
+        if temp == 10000:
             break
         infile = open(files)
         #fix case and remove punctuations, nunbers
@@ -325,19 +325,25 @@ def fetch_feature_matrix(train_positive, train_negative):
     pos_key_context_map_temp.clear();neg_key_context_map_temp.clear()
     gc.collect()
 
-    print ("Extracting Features:")
+
     pos_feature_vals_train = []
     neg_feature_vals_train = []
-
+    print ("Extracting Positive review Features:")
     active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
-    for review in train_positive:
+    for idx, review in enumerate(train_positive):
+        if (idx+1) % 1000 == 0:
+            print (((idx + 1) * 100) / len(train_positive), "% reviews done.")
         pos_feature_vals_train.append(
             get_features_1_to_23(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map,
                                  pos_context_key_map, active_keys))
     active_keys.clear()
     gc.collect()
+
+    print ("\nExtracting Negative review Features:")
     active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]]  # not sure if this is correct
-    for review in train_negative:
+    for idx, review in enumerate(train_negative):
+        if (idx+1) % 1000 == 0:
+            print (((idx + 1) * 100) / len(train_negative), "% reviews done.")
         neg_feature_vals_train.append(
             get_features_1_to_23(review.split(), neg_key_scores, neg_word_freq, train_neg_sum, neg_key_context_map,
                                  neg_context_key_map, active_keys))
@@ -353,7 +359,7 @@ if __name__ == '__main__':
     print ("\n Training :")
     feature_matrix_training_label = [1]*len(train_positive) + [0]*len(train_negative)
     feature_matrix_training = fetch_feature_matrix(train_positive, train_negative)
-    print ("Training completed. Begin Testing!")
+    print ("\n \n Training completed. Begin Testing!")
     feature_matrix_testing = fetch_feature_matrix(test_positive, test_negative)
     print ("\n Done")
     print ("Matrix size training", len(feature_matrix_training))
