@@ -38,7 +38,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 10000:
+        if temp == 1000:
             break
         infile = open(files)
         #fix case and remove punctuations, nunbers
@@ -133,15 +133,24 @@ def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_
 
 
 # returns max, avg and std dev of the distance between successive key terms in the review
-def max_avg_stddev(values):
+def max_avg_stddev(values, min_flag = False):
     if len(values) == 1:
-        return [values[0]] * 3
+        return [values[0], values[0], 0]
     else:
         dif = []
         for index, val in enumerate(values):
-            if index == (len(values) - 1):
-                break
-            dif.append(values[index + 1] - values[index])
+            if min_flag:
+                if len(values) == 2:
+                    dif.append(values[1] - values[0])
+                    break
+                elif index == (len(values) - 2):
+                    break
+                dif.append(min((values[index + 1] - values[index]), (values[index + 2] - values[index + 1])))
+            else:
+                if index == (len(values) - 1):
+                    break
+                dif.append(values[index + 1] - values[index])
+
         std_dev = 0
         if len(dif) > 1:
             std_dev = stat.stdev(dif)
@@ -230,7 +239,7 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
 
 
 # extracts the first 23 feature values
-def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
+def get_features_1_to_42(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
     features = [0]*7
     keys_inter = {}
     key_inter_pos = []
@@ -267,8 +276,8 @@ def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words,
         features[5] = len(inactive_keys)
         features[6] = float((features[5] * 100)/ total_count)
         features += max_avg_stddev(key_inter_pos)
+        features += max_avg_stddev(key_inter_pos, True)
         features += sliding_window(interval_10)
-        #features.append(max(list(key_term_scores.values()))) # TODO: check if this feature is correct
         features.append(float(total_count / len(key_term_scores.keys())))
         if len(key_term_scores.keys()) == 1:
             features.append(0)
@@ -281,7 +290,7 @@ def get_features_1_to_23(review, key_term_scores, word_frequencies, total_words,
             features.append(stat.stdev(key_language_model))
         features += context_related_features(review, keys_inter, active_keys, key_context_scores, prim_context_key_map)
     else:
-        features = [0]*23 # update to total number of features
+        features = [0]*42 # update to total number of features
     return features
 
 
@@ -334,7 +343,7 @@ def fetch_feature_matrix(train_positive, train_negative):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(train_positive), "% reviews done.")
         pos_feature_vals_train.append(
-            get_features_1_to_23(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map,
+            get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map,
                                  pos_context_key_map, active_keys))
     active_keys.clear()
     gc.collect()
@@ -345,7 +354,7 @@ def fetch_feature_matrix(train_positive, train_negative):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(train_negative), "% reviews done.")
         neg_feature_vals_train.append(
-            get_features_1_to_23(review.split(), neg_key_scores, neg_word_freq, train_neg_sum, neg_key_context_map,
+            get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, train_neg_sum, neg_key_context_map,
                                  neg_context_key_map, active_keys))
     return pos_feature_vals_train + neg_feature_vals_train
 
