@@ -15,8 +15,6 @@ test_pos_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/test/p
 test_neg_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/test/neg/"
 vectorizer_pos = CountVectorizer()
 vectorizer_neg = CountVectorizer()
-key_term_occurance_pos = []
-key_term_occurance_neg = []
 
 ignore_stops = set(["cannot", "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", 'very', "doesn't", 'needn', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', "mustn't", 'mightn', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'few', 'weren', 'nor', 'does', 'couldn', 'but', 'down', "shouldn't", 'aren', 'won', "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'too', 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", "doesn't", 'needn', 'shan', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', 'most', "mustn't", 'mightn', 'above', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'off', 'couldn', "shouldn't", 'aren', 'won'])
 stp_words = set(stopwords.words('english')) - ignore_stops
@@ -32,6 +30,22 @@ punct = string.punctuation.replace("-", "")
 key_term_threshold = 5
 context_span = 3
 context_term_val_threshold = 0
+
+#globals
+pos_active_keys = []
+pos_key_scores = {}
+pos_word_freq = {}
+pos_sum = 0
+pos_key_context_map = {}
+pos_context_key_map = {}
+
+neg_active_keys = []
+neg_key_scores = {}
+neg_word_freq = {}
+neg_sum = 0
+neg_key_context_map = {}
+neg_context_key_map = {}
+
 
 # returns extracted and cleaned reviews from respective path
 def get_data(path):
@@ -257,7 +271,10 @@ def get_features_1_to_42(review, key_term_scores, word_frequencies, total_words,
                 keys_inter[word] = [index]
             key_inter_pos.append(index)
             key_scores.append(key_term_scores[word])
-            key_language_model.append(word_frequencies[word] / total_words)
+            if word in word_frequencies:
+                key_language_model.append(word_frequencies[word] / total_words)
+            else:
+                key_language_model.append(0)
         if (index + 1) % 10 == 0:
             interval_10.append(temp)
             temp = 0
@@ -295,6 +312,9 @@ def get_features_1_to_42(review, key_term_scores, word_frequencies, total_words,
 
 
 def fetch_feature_matrix(positive_reviews, negative_reviews):
+    global pos_active_keys, neg_active_keys, pos_key_scores, neg_key_scores, pos_word_freq, neg_word_freq, \
+        pos_sum, neg_sum, pos_key_context_map, neg_key_context_map, pos_context_key_map, neg_context_key_map
+
     X_train = vectorizer_pos.fit_transform(positive_reviews)
     Y_train = vectorizer_neg.fit_transform(
         negative_reviews)  # should we fit it with same or different classifier objects ?
@@ -338,24 +358,24 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
     pos_feature_vals = []
     neg_feature_vals = []
     print ("Extracting Positive review Features:")
-    active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
+    pos_active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
     for idx, review in enumerate(positive_reviews):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(positive_reviews), "% reviews done.")
         pos_feature_vals.append(
             get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
-                                 pos_context_key_map, active_keys))
-    active_keys.clear()
+                                 pos_context_key_map, pos_active_keys))
+    pos_active_keys.clear()
     gc.collect()
 
     print ("\nExtracting Negative review Features:")
-    active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]]  # not sure if this is correct
+    neg_active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]]  # not sure if this is correct
     for idx, review in enumerate(negative_reviews):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(negative_reviews), "% reviews done.")
         neg_feature_vals.append(
             get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
-                                 neg_context_key_map, active_keys))
+                                 neg_context_key_map, neg_active_keys))
     return pos_feature_vals + neg_feature_vals
 
 if __name__ == '__main__':
@@ -369,7 +389,20 @@ if __name__ == '__main__':
     feature_matrix_training_label = [1]*len(train_positive) + [0]*len(train_negative)
     feature_matrix_training = fetch_feature_matrix(train_positive, train_negative)
     print ("\n \n Training completed. Begin Testing!")
-    feature_matrix_testing = fetch_feature_matrix(test_positive, test_negative)
+    all_tests = test_positive + test_negative
+    print ("all test size = ", len(all_tests))
+    pos_test_features = []; neg_test_features = []
+    for idx, review in enumerate(all_tests):
+        if (idx+1) % 1000 == 0:
+            print (((idx + 1) * 100) / len(all_tests), "% reviews done.")
+        pos_test_features.append(
+            get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+                                 pos_context_key_map, pos_active_keys))
+        neg_test_features.append(
+            get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
+                                 neg_context_key_map, neg_active_keys))
+
+
     print ("\n Done")
     print ("Matrix size training", len(feature_matrix_training))
-    print ("Matrix size testing", len(feature_matrix_testing))
+    print ("Matrix size testing", len(pos_test_features))
