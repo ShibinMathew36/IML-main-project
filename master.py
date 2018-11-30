@@ -294,10 +294,10 @@ def get_features_1_to_42(review, key_term_scores, word_frequencies, total_words,
     return features
 
 
-def fetch_feature_matrix(train_positive, train_negative):
-    X_train = vectorizer_pos.fit_transform(train_positive)
+def fetch_feature_matrix(positive_reviews, negative_reviews):
+    X_train = vectorizer_pos.fit_transform(positive_reviews)
     Y_train = vectorizer_neg.fit_transform(
-        train_negative)  # should we fit it with same or different classifier objects ?
+        negative_reviews)  # should we fit it with same or different classifier objects ?
     train_pos = X_train.toarray().sum(axis=0)
     train_neg = Y_train.toarray().sum(axis=0)
     print ("\n  Extracting Language model.")
@@ -309,19 +309,19 @@ def fetch_feature_matrix(train_positive, train_negative):
 
     print ("\n  Extracting key words.")
     gc.collect()
-    train_neg_sum = train_neg.sum()
-    train_pos_sum = train_pos.sum()
+    neg_sum = train_neg.sum()
+    pos_sum = train_pos.sum()
     pos_key_scores, key_occurrance_pos = get_key_terms(X_train, pos_word_freq, neg_word_freq,
-                                                       float(train_neg_sum / train_pos_sum))
+                                                       float(neg_sum / pos_sum))
     neg_key_scores, key_occurrance_neg = get_key_terms(Y_train, neg_word_freq, pos_word_freq,
-                                                       float(train_pos_sum / train_neg_sum))
+                                                       float(pos_sum / neg_sum))
     print (str(len(pos_key_scores.keys())), " positive key words extracted.")
     print (str(len(neg_key_scores.keys())), " negative key words extracted.")
 
     print ("\n  Extracting context terms.")
     # extracting context term occurrences and count
-    pos_key_context_map_temp = get_context_dict(pos_key_scores.keys(), key_occurrance_pos, train_positive)
-    neg_key_context_map_temp = get_context_dict(neg_key_scores.keys(), key_occurrance_neg, train_negative)
+    pos_key_context_map_temp = get_context_dict(pos_key_scores.keys(), key_occurrance_pos, positive_reviews)
+    neg_key_context_map_temp = get_context_dict(neg_key_scores.keys(), key_occurrance_neg, negative_reviews)
     key_occurrance_pos.clear();key_occurrance_neg.clear()
     gc.collect()
 
@@ -335,28 +335,28 @@ def fetch_feature_matrix(train_positive, train_negative):
     gc.collect()
 
 
-    pos_feature_vals_train = []
-    neg_feature_vals_train = []
+    pos_feature_vals = []
+    neg_feature_vals = []
     print ("Extracting Positive review Features:")
     active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
-    for idx, review in enumerate(train_positive):
+    for idx, review in enumerate(positive_reviews):
         if (idx+1) % 1000 == 0:
-            print (((idx + 1) * 100) / len(train_positive), "% reviews done.")
-        pos_feature_vals_train.append(
-            get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, train_pos_sum, pos_key_context_map,
+            print (((idx + 1) * 100) / len(positive_reviews), "% reviews done.")
+        pos_feature_vals.append(
+            get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
                                  pos_context_key_map, active_keys))
     active_keys.clear()
     gc.collect()
 
     print ("\nExtracting Negative review Features:")
     active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]]  # not sure if this is correct
-    for idx, review in enumerate(train_negative):
+    for idx, review in enumerate(negative_reviews):
         if (idx+1) % 1000 == 0:
-            print (((idx + 1) * 100) / len(train_negative), "% reviews done.")
-        neg_feature_vals_train.append(
-            get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, train_neg_sum, neg_key_context_map,
+            print (((idx + 1) * 100) / len(negative_reviews), "% reviews done.")
+        neg_feature_vals.append(
+            get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
                                  neg_context_key_map, active_keys))
-    return pos_feature_vals_train + neg_feature_vals_train
+    return pos_feature_vals + neg_feature_vals
 
 if __name__ == '__main__':
 
