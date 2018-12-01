@@ -52,7 +52,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 1000:
+        if temp == 10000:
             break
         infile = open(files)
         #fix case and remove punctuations, nunbers
@@ -195,7 +195,7 @@ def get_max_avg_stdev(data):
     dev = 0
     maximum = 0
     avg = 0
-    if len(data):
+    if len(data) > 0:
         maximum = max(data)
         avg = float(sum(data) / max(1, len(data)))
     if len(data) > 1:
@@ -253,7 +253,7 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
 
 
 # extracts the first 23 feature values
-def get_features_1_to_42(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
+def get_features_1_to_39(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
     features = [0]*7
     keys_inter = {}
     key_inter_pos = []
@@ -307,7 +307,7 @@ def get_features_1_to_42(review, key_term_scores, word_frequencies, total_words,
             features.append(stat.stdev(key_language_model))
         features += context_related_features(review, keys_inter, active_keys, key_context_scores, prim_context_key_map)
     else:
-        features = [0]*42 # update to total number of features
+        features = [0]*39 # update to total number of features
     return features
 
 
@@ -349,34 +349,25 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
     pos_key_context_map, pos_context_key_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp,
                                                                  pos_word_freq, neg_word_freq)
     # active_neg_keys represents those negative keys with context terms associated with it
-    neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp,
-                                                                 neg_word_freq, pos_word_freq)
-    pos_key_context_map_temp.clear();neg_key_context_map_temp.clear()
+    #neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp,
+    #                                                             neg_word_freq, pos_word_freq)
+    pos_key_context_map_temp.clear();#neg_key_context_map_temp.clear()
     gc.collect()
 
 
-    pos_feature_vals = []
-    neg_feature_vals = []
+    feature_vals = []
     print ("Extracting Positive review Features:")
     pos_active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
-    for idx, review in enumerate(positive_reviews):
+    all_reviews = positive_reviews + negative_reviews
+    for idx, review in enumerate(all_reviews):
         if (idx+1) % 1000 == 0:
-            print (((idx + 1) * 100) / len(positive_reviews), "% reviews done.")
-        pos_feature_vals.append(
-            get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+            print (((idx + 1) * 100) / len(all_reviews), "% reviews done.")
+        feature_vals.append(
+            get_features_1_to_39(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
                                  pos_context_key_map, pos_active_keys))
-    pos_active_keys.clear()
     gc.collect()
 
-    print ("\nExtracting Negative review Features:")
-    neg_active_keys = [kt for kt in neg_context_key_map if neg_context_key_map[kt]]  # not sure if this is correct
-    for idx, review in enumerate(negative_reviews):
-        if (idx+1) % 1000 == 0:
-            print (((idx + 1) * 100) / len(negative_reviews), "% reviews done.")
-        neg_feature_vals.append(
-            get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
-                                 neg_context_key_map, neg_active_keys))
-    return pos_feature_vals + neg_feature_vals
+    return feature_vals
 
 if __name__ == '__main__':
 
@@ -391,18 +382,15 @@ if __name__ == '__main__':
     print ("\n \n Training completed. Begin Testing!")
     all_tests = test_positive + test_negative
     print ("all test size = ", len(all_tests))
-    pos_test_features = []; neg_test_features = []
+    test_features = []
     for idx, review in enumerate(all_tests):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(all_tests), "% reviews done.")
-        pos_test_features.append(
-            get_features_1_to_42(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+        test_features.append(
+            get_features_1_to_39(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
                                  pos_context_key_map, pos_active_keys))
-        neg_test_features.append(
-            get_features_1_to_42(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
-                                 neg_context_key_map, neg_active_keys))
 
 
     print ("\n Done")
     print ("Matrix size training", len(feature_matrix_training))
-    print ("Matrix size testing", len(pos_test_features))
+    print ("Matrix size testing", len(test_features))
