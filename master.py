@@ -17,7 +17,9 @@ vectorizer_pos = CountVectorizer()
 vectorizer_neg = CountVectorizer()
 
 ignore_stops = set(["cannot", "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", 'very', "doesn't", 'needn', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', "mustn't", 'mightn', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'few', 'weren', 'nor', 'does', 'couldn', 'but', 'down', "shouldn't", 'aren', 'won', "mightn't", "shan't", "don't", 'isn', 'against', 'more', "wasn't", 'no', 'wasn', "weren't", "won't", 'too', 'mustn', 'shouldn', 'hadn', 'didn', 'doesn', "should've", "doesn't", 'needn', 'shan', "didn't", 'wouldn', "needn't", 'below', "hasn't", "haven't", 'not', "wouldn't", 'over', 'most', "mustn't", 'mightn', 'above', 'hasn', "hadn't", "aren't", 'ain', "couldn't", 'haven', "isn't", 'don', 'off', 'couldn', "shouldn't", 'aren', 'won'])
+remove_words = set(["went", "iii"])
 stp_words = set(stopwords.words('english')) - ignore_stops
+stp_words |= remove_words
 punct = string.punctuation.replace("-", "")
 
 """ training data * feature values
@@ -27,9 +29,10 @@ punct = string.punctuation.replace("-", "")
 """
 
 # Constants used:
-key_term_threshold = 5
+key_term_threshold = 7
 context_span = 3
-context_term_val_threshold = 0
+context_term_val_threshold = .005
+dirichlet_const = 2000
 
 #globals
 pos_active_keys = []
@@ -52,7 +55,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 10000:
+        if temp == 1000:
             break
         infile = open(files)
         #fix case and remove punctuations, nunbers
@@ -72,7 +75,7 @@ def get_data(path):
 
 
 # returns the key terms and their occurrences in both positive and negative reviews(helps extracting contexts)
-def get_key_terms(X_train,  prim_freq, sec_freq, prim_sec_ratio):
+def get_key_terms(X_train,  prim_freq, sec_freq, prim_tot, sec_tot):
     # TODO: include code to do dirichlet smoothing
     prim_train = np.array(X_train.toarray())
     temp = 0
@@ -83,7 +86,8 @@ def get_key_terms(X_train,  prim_freq, sec_freq, prim_sec_ratio):
         temp_sec_freq = 1
         if key in sec_freq:
             temp_sec_freq = sec_freq[key]
-        score = (prim_freq[key] / temp_sec_freq) * prim_sec_ratio
+        #score = (prim_freq[key] / temp_sec_freq) * prim_sec_ratio
+        score  = dirichlet(prim_freq[key], prim_tot, len(prim_freq.keys())) / dirichlet(temp_sec_freq, sec_tot, len(sec_freq.keys()))
         if score > key_term_threshold:
             prim_key_terms[key] = score
             prim_term_occurance[key] = np.flatnonzero(prim_train[:, temp]).tolist()
@@ -118,7 +122,7 @@ def get_context_dict(key_terms, key_term_occurance, train):
 
 
 # extracts context terms based on score
-def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_freq):
+def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_freq, prim_sum, sec_sum):
     key_context_score_map = {}
     context_key_map = {}
     for prim_kt, prim_kt_val in key_context_prim.items():
@@ -135,7 +139,9 @@ def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_
             sec_context = 0
             if prim_context in sec_kt_val:
                  sec_context = sec_kt_val[prim_context]
-            score = float(prim_kt_val[prim_context]/ prim_key_val) - float(sec_context / neg_key_freq)
+            #score = float(prim_kt_val[prim_context]/ prim_key_val) - float(sec_context / neg_key_freq)
+            score = dirichlet(prim_kt_val[prim_context], prim_key_val, prim_sum) - \
+                    dirichlet(sec_context, neg_key_freq, sec_sum)
             if score >= context_term_val_threshold:
                 context_score_map[prim_context] = score
                 if prim_context in context_key_map:
@@ -179,10 +185,10 @@ def sliding_window(interval_10):
     for idx, val in enumerate(interval_10):
         temp_20 += val; temp_30 += val
         max_10 = max(max_10, val)
-        if ((idx + 1) % 2 == 0):
+        if (idx + 1) % 2 == 0:
            max_20 = max(temp_20, max_20)
            temp_20 = 0
-        if ((idx + 1) % 3 == 0):
+        if (idx + 1) % 3 == 0:
            max_30 = max(temp_30, max_30)
            temp_30 = 0
         if idx == (len(interval_10) - 1):
@@ -217,9 +223,9 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
         if key in active_keys:
             for occurrence in key_terms[key]:
                 substring = fetch_substring(review, key, occurrence)
-                all_contexts_avg = float(sum(list(contexts.values())) / len(contexts.keys()))
+                all_contexts_avg = float(sum(list(contexts.values())) / max(1, len(contexts.keys())))
                 commons = set(substring).intersection(set(list(contexts.keys()))) 
-                percents.append(float((len(commons) * 100) / len(contexts.keys())))
+                percents.append(float((len(commons) * 100) / max(1, len(contexts.keys()))))
                 freqs.append(len(commons))
                 avg = []
                 for context in commons:
@@ -228,7 +234,7 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
                     common_key_freq_review.append(len(set(list(key_terms.keys())).intersection(prim_context_key_map[context])))
                 temp = float(sum(avg) / max(1, len(avg)))
                 common_context_scores.append(temp)
-                context_score_ratio.append(temp / all_contexts_avg)
+                context_score_ratio.append(temp / max(1, all_contexts_avg))
                 for term in substring:
                     if term in all_contexts:
                         if term in present_contexts_freq:
@@ -311,6 +317,9 @@ def get_features_1_to_39(review, key_term_scores, word_frequencies, total_words,
     return features
 
 
+def dirichlet(numer, denom, corpus):
+    return (numer + dirichlet_const * float(1 / corpus)) / (denom + dirichlet_const)
+
 def fetch_feature_matrix(positive_reviews, negative_reviews):
     global pos_active_keys, neg_active_keys, pos_key_scores, neg_key_scores, pos_word_freq, neg_word_freq, \
         pos_sum, neg_sum, pos_key_context_map, neg_key_context_map, pos_context_key_map, neg_context_key_map
@@ -331,13 +340,12 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
     gc.collect()
     neg_sum = train_neg.sum()
     pos_sum = train_pos.sum()
-    pos_key_scores, key_occurrance_pos = get_key_terms(X_train, pos_word_freq, neg_word_freq,
-                                                       float(neg_sum / pos_sum))
-    neg_key_scores, key_occurrance_neg = get_key_terms(Y_train, neg_word_freq, pos_word_freq,
-                                                       float(pos_sum / neg_sum))
+    pos_key_scores, key_occurrance_pos = get_key_terms(X_train, pos_word_freq, neg_word_freq, pos_sum, neg_sum)
+    neg_key_scores, key_occurrance_neg = get_key_terms(Y_train, neg_word_freq, pos_word_freq,neg_sum, pos_sum)
     print (str(len(pos_key_scores.keys())), " positive key words extracted.")
+    print (pos_key_scores.keys())
     print (str(len(neg_key_scores.keys())), " negative key words extracted.")
-
+    print (neg_key_scores.keys())
     print ("\n  Extracting context terms.")
     # extracting context term occurrences and count
     pos_key_context_map_temp = get_context_dict(pos_key_scores.keys(), key_occurrance_pos, positive_reviews)
@@ -347,10 +355,12 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
 
     # extracting context terms, active_pos_keys represents those positive keys with context terms associated with it
     pos_key_context_map, pos_context_key_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp,
-                                                                 pos_word_freq, neg_word_freq)
+                                                                 pos_word_freq, neg_word_freq, pos_sum, neg_sum)
+    #print (pos_key_context_map)
     # active_neg_keys represents those negative keys with context terms associated with it
-    #neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp,
-    #                                                             neg_word_freq, pos_word_freq)
+    neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp,
+                                                                 neg_word_freq, pos_word_freq, neg_sum, pos_sum)
+    #print (neg_key_context_map)
     pos_key_context_map_temp.clear();#neg_key_context_map_temp.clear()
     gc.collect()
 
