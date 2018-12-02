@@ -8,6 +8,8 @@ from multiprocessing import Pool
 from nltk.tokenize import word_tokenize
 from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn import svm
+from sklearn.metrics import accuracy_score
 
 train_pos_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/train/pos/"
 train_neg_path = "/home/jarvis/Documents/iml/Project/DataSets/Imdb_dataset/train/neg/"
@@ -29,10 +31,10 @@ punct = string.punctuation.replace("-", "")
 """
 
 # Constants used:
-key_term_threshold = 7
+key_term_threshold = 5
 context_span = 3
-context_term_val_threshold = .005
-dirichlet_const = 2000
+context_term_val_threshold = .1
+#dirichlet_const = 2000
 
 #globals
 pos_active_keys = []
@@ -55,7 +57,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 1000:
+        if temp == 10000:
             break
         infile = open(files)
         #fix case and remove punctuations, nunbers
@@ -67,6 +69,7 @@ def get_data(path):
         #words = [word for word in stripped if word.isalpha()]
         # filter out stop words
         stripped = word_tokenize(stripped)
+        stripped = [word for word in stripped if word.isalpha()]
         words = [w for w in stripped if not w in stp_words]
         a = ' '.join(words)
         data.append(a)
@@ -86,8 +89,8 @@ def get_key_terms(X_train,  prim_freq, sec_freq, prim_tot, sec_tot):
         temp_sec_freq = 1
         if key in sec_freq:
             temp_sec_freq = sec_freq[key]
-        #score = (prim_freq[key] / temp_sec_freq) * prim_sec_ratio
-        score  = dirichlet(prim_freq[key], prim_tot, len(prim_freq.keys())) / dirichlet(temp_sec_freq, sec_tot, len(sec_freq.keys()))
+        score = (prim_freq[key] / temp_sec_freq) * float(sec_tot / prim_tot)
+        #score  = dirichlet(prim_freq[key], prim_tot, len(prim_freq.keys())) / dirichlet(temp_sec_freq, sec_tot, len(sec_freq.keys()))
         if score > key_term_threshold:
             prim_key_terms[key] = score
             prim_term_occurance[key] = np.flatnonzero(prim_train[:, temp]).tolist()
@@ -110,7 +113,7 @@ def get_context_dict(key_terms, key_term_occurance, train):
         context_per_key = {}
         for review_index in key_term_occurance[key]:
             review = train[review_index].split()
-            if key in review:
+            if key in review: #TODO: can  have multiple occurrences
                 substring = fetch_substring(review, key)
                 for word in substring:
                     if word in context_per_key:
@@ -139,9 +142,9 @@ def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_
             sec_context = 0
             if prim_context in sec_kt_val:
                  sec_context = sec_kt_val[prim_context]
-            #score = float(prim_kt_val[prim_context]/ prim_key_val) - float(sec_context / neg_key_freq)
-            score = dirichlet(prim_kt_val[prim_context], prim_key_val, prim_sum) - \
-                    dirichlet(sec_context, neg_key_freq, sec_sum)
+            score = float(prim_kt_val[prim_context]/ prim_key_val) - float(sec_context / neg_key_freq)
+            #score = dirichlet(prim_kt_val[prim_context], prim_key_val, prim_sum) - \
+             #       dirichlet(sec_context, neg_key_freq, sec_sum)
             if score >= context_term_val_threshold:
                 context_score_map[prim_context] = score
                 if prim_context in context_key_map:
@@ -259,8 +262,8 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
 
 
 # extracts the first 23 feature values
-def get_features_1_to_39(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
-    features = [0]*7
+def get_features_1_to_43(review, key_term_scores, word_frequencies, total_words, key_context_scores, prim_context_key_map, active_keys):
+    features = [0]*6
     keys_inter = {}
     key_inter_pos = []
     key_scores = []
@@ -290,15 +293,17 @@ def get_features_1_to_39(review, key_term_scores, word_frequencies, total_words,
     if total_count != 0:
         features[0] = total_count
         features[1] = max(key_scores)
-        features[2] = min(key_scores)
-        features[3] = float(sum(key_scores) / features[0])
+        features[2] = float(sum(key_scores) / features[0])
         if features[0] == 1:
-           features[4] = 0
+           features[3] = 0
         else:    
-           features[4] = stat.stdev(key_scores)
-        features[5] = len(inactive_keys)
-        features[6] = float((features[5] * 100)/ total_count)
-        features += max_avg_stddev(key_inter_pos)
+           features[3] = stat.stdev(key_scores)
+        features[4] = len(inactive_keys)
+        features[5] = float((features[4] * 100)/ total_count)
+        features += get_max_avg_stdev([len(val) for val in keys_inter.values()])
+        dummy  = max_avg_stddev(key_inter_pos)
+        features += dummy
+        features += [float(dummy[0] / len(review)), float(dummy[1] / len(review))]
         features += max_avg_stddev(key_inter_pos, True)
         features += sliding_window(interval_10)
         features.append(float(total_count / len(key_term_scores.keys())))
@@ -313,20 +318,19 @@ def get_features_1_to_39(review, key_term_scores, word_frequencies, total_words,
             features.append(stat.stdev(key_language_model))
         features += context_related_features(review, keys_inter, active_keys, key_context_scores, prim_context_key_map)
     else:
-        features = [0]*39 # update to total number of features
+        features = [0]*43 # update to total number of features
     return features
 
 
-def dirichlet(numer, denom, corpus):
-    return (numer + dirichlet_const * float(1 / corpus)) / (denom + dirichlet_const)
+#def dirichlet(numer, denom, corpus):
+#    return (numer + dirichlet_const * float(1 / corpus)) / (denom + dirichlet_const)
 
 def fetch_feature_matrix(positive_reviews, negative_reviews):
     global pos_active_keys, neg_active_keys, pos_key_scores, neg_key_scores, pos_word_freq, neg_word_freq, \
         pos_sum, neg_sum, pos_key_context_map, neg_key_context_map, pos_context_key_map, neg_context_key_map
 
     X_train = vectorizer_pos.fit_transform(positive_reviews)
-    Y_train = vectorizer_neg.fit_transform(
-        negative_reviews)  # should we fit it with same or different classifier objects ?
+    Y_train = vectorizer_neg.fit_transform(negative_reviews)  # should we fit it with same or different classifier objects ?
     train_pos = X_train.toarray().sum(axis=0)
     train_neg = Y_train.toarray().sum(axis=0)
     print ("\n  Extracting Language model.")
@@ -343,9 +347,9 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
     pos_key_scores, key_occurrance_pos = get_key_terms(X_train, pos_word_freq, neg_word_freq, pos_sum, neg_sum)
     neg_key_scores, key_occurrance_neg = get_key_terms(Y_train, neg_word_freq, pos_word_freq,neg_sum, pos_sum)
     print (str(len(pos_key_scores.keys())), " positive key words extracted.")
-    print (pos_key_scores.keys())
+    #print (pos_key_scores.keys())
     print (str(len(neg_key_scores.keys())), " negative key words extracted.")
-    print (neg_key_scores.keys())
+    #print (neg_key_scores.keys())
     print ("\n  Extracting context terms.")
     # extracting context term occurrences and count
     pos_key_context_map_temp = get_context_dict(pos_key_scores.keys(), key_occurrance_pos, positive_reviews)
@@ -367,13 +371,13 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
 
     feature_vals = []
     print ("Extracting Positive review Features:")
-    pos_active_keys = [kt for kt in pos_context_key_map if pos_context_key_map[kt]]  # not sure if this is correct
+    pos_active_keys = [kt for kt in pos_key_context_map.keys() if pos_key_context_map[kt]]
     all_reviews = positive_reviews + negative_reviews
     for idx, review in enumerate(all_reviews):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(all_reviews), "% reviews done.")
         feature_vals.append(
-            get_features_1_to_39(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+            get_features_1_to_43(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
                                  pos_context_key_map, pos_active_keys))
     gc.collect()
 
@@ -381,7 +385,7 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
 
 if __name__ == '__main__':
 
-    p = Pool(4)
+    p = Pool(2)
     [train_positive, train_negative, test_positive, test_negative] = \
         p.map(get_data, [train_pos_path, train_neg_path, test_pos_path, test_neg_path])
     gc.collect()
@@ -389,6 +393,7 @@ if __name__ == '__main__':
     print ("\n Training :")
     feature_matrix_training_label = [1]*len(train_positive) + [0]*len(train_negative)
     feature_matrix_training = fetch_feature_matrix(train_positive, train_negative)
+
     print ("\n \n Training completed. Begin Testing!")
     all_tests = test_positive + test_negative
     print ("all test size = ", len(all_tests))
@@ -397,10 +402,21 @@ if __name__ == '__main__':
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(all_tests), "% reviews done.")
         test_features.append(
-            get_features_1_to_39(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+            get_features_1_to_43(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
                                  pos_context_key_map, pos_active_keys))
 
 
     print ("\n Done")
+    for arr in feature_matrix_training:
+        if len(arr) != 43:
+            print ("\n", len(arr))
+    X = np.array(feature_matrix_training)
+    y = np.array(feature_matrix_training_label)
+    model = svm.SVC()
+    model.fit(X, y)
+    test = np.array(test_features)
+    pred = model.predict(test)
     print ("Matrix size training", len(feature_matrix_training))
     print ("Matrix size testing", len(test_features))
+    print ("\n Accuracy = ", accuracy_score(y, pred))
+
