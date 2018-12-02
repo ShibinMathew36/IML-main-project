@@ -1,6 +1,7 @@
 import gc
 import glob
 import string
+import scipy.io
 import statistics as stat
 import numpy as np
 import collections as col
@@ -31,9 +32,9 @@ punct = string.punctuation.replace("-", "")
 """
 
 # Constants used:
-key_term_threshold = 3
+key_term_threshold = 5
 context_span = 4
-context_term_val_threshold = .05
+context_term_val_threshold = .01
 dirichlet_const = 2000
 
 #globals
@@ -55,7 +56,7 @@ def get_data(path):
     data = []
     temp = 0
     for files in glob.glob(path + "*.txt"):
-        if temp == 10000:
+        if temp == 12500:
             break
         infile = open(files)
         #fix case and remove punctuations, nunbers
@@ -111,7 +112,7 @@ def get_context_dict(key_terms, key_term_occurance, train):
         for review_index in key_term_occurance[key]:
             review = train[review_index].split()
             for idx, rv in enumerate(review):
-                if rv == review: #TODO: can  have multiple occurrences
+                if rv == key: #TODO: can  have multiple occurrences
                     substring = fetch_substring(review, key, idx)
                     for word in substring:
                         if word in context_per_key:
@@ -135,13 +136,16 @@ def get_context_terms(key_context_prim, key_context_sec, prim_key_freq, sec_key_
             neg_key_freq = sec_key_freq[prim_kt]
         if prim_kt in key_context_sec:
             sec_kt_val = key_context_sec[prim_kt]
+        #print (list(prim_kt_val.keys()))
         for prim_context in prim_kt_val.keys():
             sec_context = 0
+            sec_corpus = 0
             if prim_context in sec_kt_val:
                  sec_context = sec_kt_val[prim_context]
+                 sec_corpus = len(sec_kt_val.keys())
             #score = float(prim_kt_val[prim_context]/ prim_key_val) - float(sec_context / neg_key_freq)
-            score = dirichlet(prim_kt_val[prim_context], prim_key_val, prim_sum) - \
-                    dirichlet(sec_context, neg_key_freq, sec_sum)
+            score = dirichlet(prim_kt_val[prim_context], prim_key_val, len(prim_kt_val.keys())) - \
+                    dirichlet(sec_context, neg_key_freq, sec_corpus)
             if score >= context_term_val_threshold:
                 context_score_map[prim_context] = score
                 if prim_context in context_key_map:
@@ -231,7 +235,7 @@ def context_related_features(review, key_terms, active_keys, context_stored_scor
                 for context in commons:
                     avg.append(contexts[context])
                     common_key_freq_all.append(len(prim_context_key_map[context]))
-                    common_key_freq_review.append(len(set(list(key_terms.keys())).intersection(prim_context_key_map[context])))
+                    common_key_freq_review.append(len(set(list(key_terms.keys())).intersection(set(prim_context_key_map[context]))))
                 temp = float(sum(avg) / max(1, len(avg)))
                 common_context_scores.append(temp)
                 context_score_ratio.append(temp / max(1, all_contexts_avg))
@@ -320,6 +324,8 @@ def get_features_1_to_43(review, key_term_scores, word_frequencies, total_words,
 
 
 def dirichlet(numer, denom, corpus):
+    if corpus == 0:
+        return 0
     return (numer + dirichlet_const * float(1 / corpus)) / (denom + dirichlet_const)
 
 def fetch_feature_matrix(positive_reviews, negative_reviews):
@@ -355,11 +361,9 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
     neg_key_context_map_temp = get_context_dict(neg_key_scores.keys(), key_occurrance_neg, negative_reviews)
     key_occurrance_pos.clear();key_occurrance_neg.clear()
     gc.collect()
-
     # extracting context terms, active_pos_keys represents those positive keys with context terms associated with it
     pos_key_context_map, pos_context_key_map = get_context_terms(pos_key_context_map_temp, neg_key_context_map_temp,
                                                                  pos_word_freq, neg_word_freq, pos_uniques, neg_uniques)
-    #print (pos_key_context_map)
     # active_neg_keys represents those negative keys with context terms associated with it
     neg_key_context_map, neg_context_key_map = get_context_terms(neg_key_context_map_temp, pos_key_context_map_temp,
                                                                  neg_word_freq, pos_word_freq, neg_uniques, pos_uniques)
@@ -371,13 +375,16 @@ def fetch_feature_matrix(positive_reviews, negative_reviews):
     feature_vals = []
     print ("Extracting Positive review Features:")
     pos_active_keys = [kt for kt in pos_key_context_map.keys() if pos_key_context_map[kt]]
+    neg_active_keys = [kt for kt in neg_key_context_map.keys() if neg_key_context_map[kt]]
     all_reviews = positive_reviews + negative_reviews
     for idx, review in enumerate(all_reviews):
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(all_reviews), "% reviews done.")
         feature_vals.append(
-            get_features_1_to_43(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
-                                 pos_context_key_map, pos_active_keys))
+             get_features_1_to_43(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
+                                 neg_context_key_map, neg_active_keys))
+            #get_features_1_to_43(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+            #                     pos_context_key_map, pos_active_keys))
     gc.collect()
 
     return feature_vals
@@ -401,8 +408,10 @@ if __name__ == '__main__':
         if (idx+1) % 1000 == 0:
             print (((idx + 1) * 100) / len(all_tests), "% reviews done.")
         test_features.append(
-            get_features_1_to_43(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
-                                 pos_context_key_map, pos_active_keys))
+            get_features_1_to_43(review.split(), neg_key_scores, neg_word_freq, neg_sum, neg_key_context_map,
+                                 neg_context_key_map, neg_active_keys))
+            #get_features_1_to_43(review.split(), pos_key_scores, pos_word_freq, pos_sum, pos_key_context_map,
+            #                     pos_context_key_map, pos_active_keys))
 
 
     print ("\n Done")
@@ -418,4 +427,6 @@ if __name__ == '__main__':
     print ("Matrix size training", len(feature_matrix_training))
     print ("Matrix size testing", len(test_features))
     print ("\n Accuracy = ", (accuracy_score(y, pred) * 100), " %")
+    scipy.io.savemat('training_features.mat', mdict={'X': X})
+    scipy.io.savemat('testing_features.mat', mdict={'test': test})
 
